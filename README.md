@@ -9,22 +9,28 @@ It allows users to upload, manage, and share files securely with authentication,
 
 👉 Frontend: https://your-frontend-link.vercel.app
 👉 Backend API: https://your-backend-link.onrender.com
-
 ---
 
 ## 📸 Preview
 
-> Add screenshots here (very important for recruiters)
+### 🏠 Dashboard
 
-* Dashboard
-* Upload UI
-* File sharing page
-* Activity tracking
+Overview of files, folders, and user activity.
+<img width="1920" height="923" alt="Dashborad" src="Screenshots/Dashboard.png" />
 
-Example:
+---
 
-![Dashboard Screenshot](./assets/dashboard.png)
-![Upload Screenshot](./assets/upload.png)
+### 🔗 File Sharing
+
+Share files using secure links with optional protection.
+<img width="1920" height="923" alt="Share" src="Screenshots/Share.png" />
+
+---
+
+### 📊 Activity Tracking
+
+Track user actions like uploads, deletes, and shares.
+<img width="1920" height="923" alt="Home Page" src="Screenshots/Activity.png" />
 
 ---
 
