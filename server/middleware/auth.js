@@ -33,13 +33,23 @@ const protect = async (req, res, next) => {
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Attach user to request (exclude password)
-    const user = await User.findById(decoded.id);
+    // Attach user to request (exclude password from the returned document)
+    const user = await User.findById(decoded.id).select('-password');
 
     if (!user) {
       return res.status(401).json({
         success: false,
         message: 'Not authorized — user no longer exists',
+      });
+    }
+
+    // ✅ FIX: Check if the user's account is suspended or disabled
+    // Assuming your User model uses a 'status' string (e.g., 'active', 'suspended', 'disabled')
+    // Alternatively, if using a boolean, this could be: if (!user.isActive) { ... }
+    if (user.status === 'suspended' || user.status === 'disabled') {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized — account is suspended or disabled',
       });
     }
 
