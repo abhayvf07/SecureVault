@@ -76,6 +76,11 @@ const getCloudinaryPublicId = (filePath) => {
   }
 };
 
+const getRelativePath = (absolutePath) => {
+  const uploadsDir = path.join(__dirname, '..', 'uploads');
+  return path.relative(uploadsDir, absolutePath);
+};
+
 /**
  * Delete a file from storage.
  * @param {string} filePath - Local file path or Cloudinary URL
@@ -151,7 +156,7 @@ const uploadToCloud = async (localPath, folder = 'securevault') => {
   } catch (err) {
     logger.error(`Cloudinary upload failed, keeping local: ${err.message}`);
     return {
-      url: localPath,
+      url: getRelativePath(localPath),
       publicId: null,
       storageType: 'local',
     };
