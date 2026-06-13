@@ -68,10 +68,7 @@ const DashboardPage = () => {
 
   // Re-fetch files when filters change (with debounce for search)
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchFiles();
-    }, searchQuery ? 300 : 0);
-
+    const timer = setTimeout(fetchFiles, 300);
     return () => clearTimeout(timer);
   }, [fetchFiles, searchQuery]);
 
