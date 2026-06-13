@@ -168,8 +168,10 @@ export const filesAPI = {
     link.setAttribute('download', fileName);
     document.body.appendChild(link);
     link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
+    setTimeout(() => {
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    }, 100);
   },
 };
 
@@ -204,8 +206,10 @@ export const shareAPI = {
     link.setAttribute('download', fileName);
     document.body.appendChild(link);
     link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
+    setTimeout(() => {
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    }, 100);
   },
 };
 
