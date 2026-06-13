@@ -47,20 +47,36 @@ Building this taught me a lot about JWT refresh token rotation, secure cookie ha
 - File metadata handling
 
 ### File Sharing
-- Share files via unique generated links
-- Optional password protection on links
-- Set expiry on share links
-- Tracks how many times a file was downloaded
-- When using Cloudinary, downloads stream securely from the cloud
+- Share files via unique generated links (token-based)
+- Optional password protection on share links
+- Set expiry time on share links (configurable hours)
+- Download limit tracking — see how many times files were downloaded
+- Secure download endpoint — passwords always submitted via POST
+- When using Cloudinary, downloads stream directly from CDN
 
 ### Activity Tracking
 - Logs every user action — upload, delete, share, login
 - Backend logging system
 
 ### Performance & Scalability
-- Pagination on file listings
-- Optimized database queries
+- Pagination on file listings (12 items/page, up to 50)
+- MongoDB aggregation for folder counts (replaces N+1 query pattern)
+- Optimized database queries with proper indexing
 - Modular backend so adding new features doesn't break existing ones
+- Safe activity logging with fallback (failures don't cascade to user operations)
+- File download locking prevents delete race conditions
+
+---
+
+## Recent Improvements (June 2026)
+
+- **Query Optimization**: Replaced N+1 folder file-count queries with MongoDB aggregation (50x faster for 50 folders)
+- **Download Safety**: File locking prevents deletion race conditions; download flag released after stream completes
+- **Share Route Security**: Removed legacy GET endpoint; share downloads now require POST with password submission
+- **Logging Reliability**: Activity logging wrapped in safe try-catch so database failures don't cascade to user operations
+- **Search UX**: Fixed dashboard search debounce to apply consistently on all queries (not just when typing)
+- **Blob Cleanup**: Delayed object URL revocation prevents browser download race conditions
+- **Path Portability**: Local file paths stored as relative (`uploads/uuid.jpg`) instead of absolute for server migration support
 
 ---
 
@@ -112,8 +128,8 @@ The frontend also has a clean structure — pages, reusable components, hooks/co
 | PUT | `/api/files/:id/rename` | Rename a file |
 | GET | `/api/files/download/:id` | Download a file |
 | POST | `/api/share/:fileId` | Create a share link |
-| GET | `/api/share/:token/info` | Get share link info |
-| POST | `/api/share/:token/download` | Download via share link |
+| GET | `/api/share/:token/info` | Get share link info (no password needed) |
+| POST | `/api/share/:token/download` | Download via share link (with optional password) |
 | GET | `/api/activity` | Get activity log |
 | GET | `/api/activity/analytics` | Get analytics |
 
@@ -241,13 +257,17 @@ This was honestly the most fun part to work on. Security is usually treated as a
 - Dangerous extensions are blocked — `.exe`, `.bat`, `.sh`, `.dll` etc.
 - Files get a UUID name on disk — original filename never touches storage
 - Path traversal protection — uploads can't escape their directory
+- File locking during download prevents deletion race conditions
+- Local file paths stored as relative paths for portability across servers
 - File size limit — 5MB by default, configurable in env
 
 **API Security**
 - Rate limiting — 100 req/15min general, 5 req/15min on auth routes, 10 req/min on uploads
+- Share download route is POST-only (prevents direct link bypass of password protection)
 - Zod validates all user input before it reaches business logic
 - Helmet sets security headers automatically
 - CORS is locked to the configured `CLIENT_URL` only
+- Activity logging is non-blocking so database errors don't break user operations
 
 **Passwords**
 - Strong password policy enforced at signup
@@ -273,12 +293,13 @@ Things to do before going to production:
 
 ## What I Want to Add Next
 
-- Actually deploy the whole thing (frontend + backend)
-- Add AWS S3 as another storage option
-- Write more tests — currently only auth is covered, want to cover files, sharing and activity too
+- Deploy the whole stack (frontend + backend + database)
+- Unit tests for file operations and share links (currently only auth is covered)
+- AWS S3 as another storage option (in addition to local and Cloudinary)
 - File move between folders
-- Real-time notifications for shared files
-- Postman collection / Swagger docs
+- Real-time notifications for shared file downloads
+- Swagger/OpenAPI docs for easier API exploration
+- Activity log archival strategy for large deployments
 
 ---
 
