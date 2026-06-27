@@ -77,8 +77,8 @@ const getCloudinaryPublicId = (filePath) => {
 };
 
 const getRelativePath = (absolutePath) => {
-  const uploadsDir = path.join(__dirname, '..', 'uploads');
-  return path.relative(uploadsDir, absolutePath);
+  const baseDir = path.join(__dirname, '..');
+  return path.relative(baseDir, absolutePath);
 };
 
 /**
@@ -128,7 +128,7 @@ const deleteFile = async (filePath, storageType = 'local', publicId = null) => {
 const uploadToCloud = async (localPath, folder = 'securevault') => {
   if (!isCloudinaryConfigured()) {
     return {
-      url: localPath,
+      url: getRelativePath(localPath),
       publicId: null,
       storageType: 'local',
     };
