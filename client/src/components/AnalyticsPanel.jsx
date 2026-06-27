@@ -14,13 +14,14 @@ import {
  * - Upload trend (last 7 days)
  * - Recent activity timeline
  */
-const AnalyticsPanel = () => {
+const AnalyticsPanel = ({ refreshKey }) => {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchAnalytics = async () => {
       try {
+        setLoading(true);
         const res = await activityAPI.getAnalytics();
         setAnalytics(res.data.data);
       } catch (error) {
@@ -31,7 +32,7 @@ const AnalyticsPanel = () => {
     };
 
     fetchAnalytics();
-  }, []);
+  }, [refreshKey]);
 
   // Format bytes to human-readable
   const formatSize = (bytes) => {
