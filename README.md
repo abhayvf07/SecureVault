@@ -68,7 +68,7 @@ Building this taught me a lot about JWT refresh token rotation, secure cookie ha
 
 ---
 
-## Recent Improvements (June 2026)
+## Improvements (June 2026)
 
 - **Query Optimization**: Replaced N+1 folder file-count queries with MongoDB aggregation (50x faster for 50 folders)
 - **Download Safety**: File locking prevents deletion race conditions; download flag released after stream completes
@@ -100,6 +100,7 @@ Building this taught me a lot about JWT refresh token rotation, secure cookie ha
 - express-rate-limit
 - cookie-parser
 - uuid, cors, dotenv
+- file-type (magic-byte file validation).
 
 ---
 
@@ -132,7 +133,9 @@ The frontend also has a clean structure — pages, reusable components, hooks/co
 | POST | `/api/share/:token/download` | Download via share link (with optional password) |
 | GET | `/api/activity` | Get activity log |
 | GET | `/api/activity/analytics` | Get analytics |
-
+| POST | `/api/folders` | Create a new folder |
+| GET | `/api/folders` | List all folders |
+| DELETE | `/api/folders/:id` | Delete a folder (files move to root) |
 I'll add a proper Postman collection soon — it's on my to-do list.
 
 ---
@@ -141,21 +144,79 @@ I'll add a proper Postman collection soon — it's on my to-do list.
 
 ```
 SecureVault/
-│
 ├── client/                # Frontend (React + Vite)
-│   ├── src/
 │   ├── public/
-│   └── dist/              (ignored)
-│
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── AnalyticsPanel.jsx
+│   │   │   ├── FileCard.jsx
+│   │   │   ├── FileIcon.jsx
+│   │   │   ├── FolderList.jsx
+│   │   │   ├── Navbar.jsx
+│   │   │   ├── ProtectedRoute.jsx
+│   │   │   ├── SkeletonLoader.jsx
+│   │   │   └── UploadZone.jsx
+│   │   ├── context/
+│   │   │   ├── AuthContext.jsx
+│   │   │   └── useAuth.js
+│   │   ├── pages/
+│   │   │   ├── ActivityPage.jsx
+│   │   │   ├── DashboardPage.jsx
+│   │   │   ├── LoginPage.jsx
+│   │   │   └── SharedFilePage.jsx
+│   │   ├── services/
+│   │   │   └── api.js
+│   │   ├── App.jsx
+│   │   ├── index.css
+│   │   └── main.jsx
+│   ├── .env
+│   ├── .env.example
+│   ├── eslint.config.js
+│   ├── index.html
+│   ├── package-lock.json
+│   ├── package.json
+│   └── vite.config.js
+|
 ├── server/                # Backend (Node + Express)
 │   ├── controllers/
-│   ├── routes/
+│   │   ├── activityController.js
+│   │   ├── authController.js
+│   │   ├── fileController.js
+│   │   ├── folderController.js
+│   │   └── shareController.js
 │   ├── middleware/
+│   │   ├── auth.js
+│   │   ├── errorHandler.js
+│   │   ├── upload.js
+│   │   └── validate.js
+│   ├── models/
+│   │   ├── ActivityLog.js
+│   │   ├── File.js
+│   │   ├── Folder.js
+│   │   ├── RefreshToken.js
+│   │   ├── SharedLink.js
+│   │   └── User.js
+│   ├── routes/
+│   │   ├── activityRoutes.js
+│   │   ├── authRoutes.js
+│   │   ├── fileRoutes.js
+│   │   ├── folderRoutes.js
+│   │   └── shareRoutes.js
 │   ├── services/
+│   │   ├── activityService.js
+│   │   └── uploadService.js
 │   ├── utils/
-│   ├── uploads/           (ignored)
-│   └── __tests__/
-│
+│   │   ├── generateToken.js
+│   │   ├── logger.js
+│   │   ├── streamRemoteFile.js
+│   │   └── timeParser.js
+│   ├── .env
+│   ├── .env.example
+│   ├── app.js
+│   ├── package-lock.json
+│   ├── package.json
+│   └── server.js
+├── .gitignore
 └── README.md
 ```
 
@@ -230,14 +291,9 @@ Frontend runs on `http://localhost:5173`.
 
 ---
 
-### 4. Running Tests (optional)
+### 4. Running Tests
 
-```bash
-cd server
-npm test
-```
-
-This runs the Jest tests I wrote for the auth endpoints.
+Test coverage is currently being restored — see the "What I Want to Add Next" section.
 
 ---
 
@@ -294,23 +350,35 @@ Things to do before going to production:
 ## What I Want to Add Next
 
 - Deploy the whole stack (frontend + backend + database)
-- Unit tests for file operations and share links (currently only auth is covered)
-- AWS S3 as another storage option (in addition to local and Cloudinary)
+- Unit tests for auth, file operations, and share links
 - File move between folders
 - Real-time notifications for shared file downloads
 - Swagger/OpenAPI docs for easier API exploration
 - Activity log archival strategy for large deployments
 
+### Expert-Level Improvements I'm Planning
+
+These are the deeper, production-grade changes I want to tackle once the core features are stable. They're the kind of things that separate a project that "works on my machine" from one that survives years of real-world use.
+
+**Database-Level Atomicity & Transactional Uploads**
+Right now the share-link download counter and the file-delete lock work fine, but they're not using true database-level atomic operations — under heavy concurrent load there's a theoretical window for race conditions. I want to move both to MongoDB's native atomic operators (`$inc`, `findOneAndUpdate`) so the database itself guarantees correctness, no matter how many requests hit at the same time. Beyond that, the upload flow today does three things in sequence: save the file to disk, create the database record, and log the activity. If the server crashes between any of those steps, you could end up with an orphaned file on disk with no matching DB row, or a database entry pointing to a file that never finished writing. The fix is wrapping that entire sequence in a MongoDB transaction (which requires a replica set — something the deployment notes already recommend) or using a short-lived distributed lock. Either way, the goal is making the upload pipeline all-or-nothing: it either fully succeeds or fully rolls back, no in-between states.
+
+**Background Reconciliation Worker**
+Even with transactions, things can go wrong over months and years of production use — a deploy gone bad, a manual fix that missed a step, a disk that filled up mid-write. I want to add a lightweight background job (cron-style or using MongoDB change streams) that periodically scans the `uploads/` directory and compares it against the `File` collection. Any file on disk without a matching database document gets flagged (and optionally cleaned up), and any database record pointing to a missing file gets reported. It's the kind of operational tooling that gives you confidence the system is healthy without having to manually dig through logs.
+
+**S3 (or Object Store) as a True Third Storage Backend**
+The existing storage abstraction already makes switching between local and Cloudinary a one-line env change, which means adding S3 as a third option is a clean extension rather than a rewrite. But I don't just want to proxy uploads through the Node server the way local storage does — the real win is using presigned URLs so clients upload directly to S3 and download directly from S3, completely bypassing the server for the heavy data transfer. This would meaningfully improve throughput and cut server memory pressure for larger files, since the Node process never has to buffer file contents in memory at all.
+
+**SVG Upload Hardening**
+This one's a security gap I'm aware of. `image/svg+xml` is currently in the allowed MIME types list, which makes sense since SVGs are a common image format. But SVGs are XML under the hood, and they can embed `<script>` tags, event handlers, and external resource references — making them a known stored-XSS vector if they're ever served back to a browser with a renderable content type. The fix is either running every uploaded SVG through a server-side sanitizer (something like DOMPurify or sanitize-html configured to strip scripts and dangerous attributes) before persisting it, or simply removing SVG from the allowed list entirely and offering a server-side PNG/JPEG rendering fallback for icon use cases. Either approach closes the gap cleanly without hurting the user experience.
+
 ---
+
+## License — MIT.
 
 ## Testing
 
-I wrote a basic Jest test suite for auth endpoints to start. The structure is clean so extending it to other routes is easy.
-
-```bash
-cd server
-npm test
-```
+Test coverage is planned and the project structure supports it cleanly. Priority tests to add: auth endpoints, share link download-limit enforcement, and file upload validation.
 
 ---
 
