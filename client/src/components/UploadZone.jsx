@@ -3,23 +3,26 @@ import { Upload, CloudUpload, X, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { filesAPI } from '../services/api';
 
-const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+const DEFAULT_MAX_SIZE = 5 * 1024 * 1024; // 5MB fallback
 
 /**
  * UploadZone
  * Drag-and-drop + click-to-upload file area.
  * Shows upload progress and validates file before sending.
  */
-const UploadZone = ({ folderId, onUploadComplete }) => {
+const UploadZone = ({ folderId, onUploadComplete, maxFileSize }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef(null);
 
+  const effectiveMax = maxFileSize || DEFAULT_MAX_SIZE;
+  const maxSizeMB = Math.round(effectiveMax / (1024 * 1024));
+
   const uploadFile = useCallback(async (file) => {
     // Client-side validation
-    if (file.size > MAX_SIZE) {
-      toast.error('File too large. Maximum size is 5MB');
+    if (file.size > effectiveMax) {
+      toast.error(`File too large. Maximum size is ${maxSizeMB}MB`);
       return;
     }
 
@@ -55,7 +58,7 @@ const UploadZone = ({ folderId, onUploadComplete }) => {
       setIsUploading(false);
       setUploadProgress(0);
     }
-  }, [folderId, onUploadComplete]);
+  }, [folderId, onUploadComplete, effectiveMax, maxSizeMB]);
 
   const handleDragOver = useCallback((e) => {
     e.preventDefault();
@@ -142,7 +145,7 @@ const UploadZone = ({ folderId, onUploadComplete }) => {
               {isDragging ? 'Drop file here' : 'Click or drag file to upload'}
             </p>
             <p className="text-dark-500 text-sm">
-              Images, PDFs, documents — max 5MB
+              Images, PDFs, documents — max {maxSizeMB}MB
             </p>
           </div>
         </div>
