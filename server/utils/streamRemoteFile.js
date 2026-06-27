@@ -34,6 +34,7 @@ const streamRemoteFile = async (fileUrl, res, filename = 'download') => {
       remoteRes.on('error', reject);
     });
 
+    request.setTimeout(30000); // 30s timeout for slow/hung remote servers
     request.on('error', reject);
     request.on('timeout', () => {
       request.destroy(new AppError('Remote request timed out', 504));
