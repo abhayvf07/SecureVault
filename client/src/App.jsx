@@ -3,9 +3,11 @@ import { useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import AdminRoute from './components/AdminRoute';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import ActivityPage from './pages/ActivityPage';
+import AdminDashboardPage from './pages/AdminDashboardPage';
 import SharedFilePage from './pages/SharedFilePage';
 
 /**
@@ -16,6 +18,7 @@ import SharedFilePage from './pages/SharedFilePage';
  * /login           — Login/Signup (public)
  * /dashboard       — File management (protected)
  * /activity        — Activity history (protected)
+ * /admin           — Admin dashboard (admin only)
  * /shared/:token   — Shared file access (public)
  */
 const LogoutRedirector = () => {
@@ -50,6 +53,14 @@ function App() {
               <ProtectedRoute>
                 <ActivityPage />
               </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <AdminRoute>
+                <AdminDashboardPage />
+              </AdminRoute>
             }
           />
           <Route path="/shared/:token" element={<SharedFilePage />} />
