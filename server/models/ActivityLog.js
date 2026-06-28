@@ -28,6 +28,11 @@ const activityLogSchema = new mongoose.Schema(
         'REGISTER',
         'CREATE_FOLDER',
         'DELETE_FOLDER',
+        'SUSPEND_USER',
+        'ACTIVATE_USER',
+        'PROMOTE_ADMIN',
+        'DEMOTE_ADMIN',
+        'ADMIN_DELETE_FILE',
       ],
     },
     resourceType: {
