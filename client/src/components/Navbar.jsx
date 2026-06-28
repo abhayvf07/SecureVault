@@ -1,6 +1,6 @@
 import { useAuth } from '../context/useAuth';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Shield, LogOut, User, Activity, LayoutDashboard } from 'lucide-react';
+import { Shield, LogOut, User, Activity, LayoutDashboard, Crown } from 'lucide-react';
 
 /**
  * Navbar
@@ -19,6 +19,10 @@ const Navbar = ({ searchQuery, onSearchChange }) => {
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/activity', label: 'Activity', icon: Activity },
+    // Conditionally add Admin tab for admin users
+    ...(user?.role === 'admin'
+      ? [{ path: '/admin', label: 'Admin', icon: Crown }]
+      : []),
   ];
 
   return (
