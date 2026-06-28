@@ -24,6 +24,12 @@ See everything that happened — uploads, deletes, shares, logins.
 
 ---
 
+### Admin Dashboard
+Manage users, files, and platform settings — suspend accounts, promote admins, delete files.
+<img width="1920" height="923" alt="Admin" src="Screenshots/Admin.png" />
+
+---
+
 ## Why I Built This
 
 I wanted to build something that actually feels like a real-world project. Most beginner projects are just basic CRUD apps and I wanted to go beyond that. File storage seemed like a great challenge because there's so much to think about — how do you handle auth properly? How do you make sharing safe? How do you structure the backend so it doesn't become a nightmare to maintain?
@@ -36,9 +42,18 @@ Building this taught me a lot about JWT refresh token rotation, secure cookie ha
 
 ### Authentication & Security
 - JWT-based auth with access + refresh tokens
+- Role-based access control (user/admin roles)
 - Protected API routes
 - Input validation using Zod
 - Environment variable protection
+
+### Admin Dashboard
+- Platform-wide stats (users, files, storage)
+- User management — search, suspend/activate, promote/demote
+- File oversight — view and delete any file across all users
+- Self-lockout prevention (can't demote last admin, can't suspend yourself)
+- Full audit trail — every admin action is logged
+- CLI bootstrap script for first admin (zero HTTP attack surface)
 
 ### File Management
 - Upload files with proper validation
@@ -56,6 +71,7 @@ Building this taught me a lot about JWT refresh token rotation, secure cookie ha
 
 ### Activity Tracking
 - Logs every user action — upload, delete, share, login
+- Logs admin actions — suspend, promote, file deletions
 - Backend logging system
 
 ### Performance & Scalability
@@ -136,6 +152,13 @@ The frontend also has a clean structure — pages, reusable components, hooks/co
 | POST | `/api/folders` | Create a new folder |
 | GET | `/api/folders` | List all folders |
 | DELETE | `/api/folders/:id` | Delete a folder (files move to root) |
+| GET | `/api/admin/stats` | Get platform-wide stats (admin) |
+| GET | `/api/admin/users` | List all users (admin) |
+| PATCH | `/api/admin/users/:id/status` | Suspend/activate a user (admin) |
+| PATCH | `/api/admin/users/:id/role` | Promote/demote user role (admin) |
+| GET | `/api/admin/files` | List all files across users (admin) |
+| DELETE | `/api/admin/files/:id` | Admin delete any file (admin) |
+
 I'll add a proper Postman collection soon — it's on my to-do list.
 
 ---
@@ -148,6 +171,7 @@ SecureVault/
 │   ├── public/
 │   ├── src/
 │   │   ├── components/
+│   │   │   ├── AdminRoute.jsx
 │   │   │   ├── AnalyticsPanel.jsx
 │   │   │   ├── FileCard.jsx
 │   │   │   ├── FileIcon.jsx
@@ -161,6 +185,7 @@ SecureVault/
 │   │   │   └── useAuth.js
 │   │   ├── pages/
 │   │   │   ├── ActivityPage.jsx
+│   │   │   ├── AdminDashboardPage.jsx
 │   │   │   ├── DashboardPage.jsx
 │   │   │   ├── LoginPage.jsx
 │   │   │   └── SharedFilePage.jsx
@@ -180,6 +205,7 @@ SecureVault/
 ├── server/                # Backend (Node + Express)
 │   ├── controllers/
 │   │   ├── activityController.js
+│   │   ├── adminController.js
 │   │   ├── authController.js
 │   │   ├── fileController.js
 │   │   ├── folderController.js
@@ -198,10 +224,13 @@ SecureVault/
 │   │   └── User.js
 │   ├── routes/
 │   │   ├── activityRoutes.js
+│   │   ├── adminRoutes.js
 │   │   ├── authRoutes.js
 │   │   ├── fileRoutes.js
 │   │   ├── folderRoutes.js
 │   │   └── shareRoutes.js
+│   ├── scripts/
+│   │   └── createAdmin.js
 │   ├── services/
 │   │   ├── activityService.js
 │   │   └── uploadService.js
@@ -269,6 +298,17 @@ npm run dev
 
 It'll run on `http://localhost:5000`. If that port is busy it'll automatically try the next one.
 
+#### Admin Setup
+
+After registering your first account normally, promote it to admin via the CLI:
+
+```bash
+cd server
+node scripts/createAdmin.js your@email.com
+```
+
+This is intentionally CLI-only — you need shell access to run it, which is the correct security bar for creating the first admin. Once an admin exists, they can promote other users from the Admin Dashboard in the UI.
+
 ---
 
 ### 3. Setup the frontend
@@ -305,6 +345,9 @@ This was honestly the most fun part to work on. Security is usually treated as a
 - Access token lives in memory only — not localStorage, so XSS can't steal it
 - Refresh token stored in httpOnly cookie — JavaScript can't access it at all
 - Token rotation on every refresh, old tokens are invalidated
+- Role-based access control — admin routes check `req.user.role` via live DB lookup (no stale-token window)
+- Admin-only middleware (`requireAdmin`) gates all `/api/admin/*` endpoints
+- Self-lockout prevention — admins can't demote themselves or the last remaining admin
 - Every file operation checks ownership — can't access someone else's file by guessing an ID (IDOR protection)
 - Invalid or expired tokens automatically log the user out
 
@@ -373,8 +416,6 @@ The existing storage abstraction already makes switching between local and Cloud
 This one's a security gap I'm aware of. `image/svg+xml` is currently in the allowed MIME types list, which makes sense since SVGs are a common image format. But SVGs are XML under the hood, and they can embed `<script>` tags, event handlers, and external resource references — making them a known stored-XSS vector if they're ever served back to a browser with a renderable content type. The fix is either running every uploaded SVG through a server-side sanitizer (something like DOMPurify or sanitize-html configured to strip scripts and dangerous attributes) before persisting it, or simply removing SVG from the allowed list entirely and offering a server-side PNG/JPEG rendering fallback for icon use cases. Either approach closes the gap cleanly without hurting the user experience.
 
 ---
-
-## License — MIT.
 
 ## Testing
 
