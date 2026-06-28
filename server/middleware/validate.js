@@ -94,6 +94,18 @@ const shareSchema = z.object({
     .optional(),
 });
 
+// ──────────────────────────────────────────────
+// Admin Validation Schemas
+// ──────────────────────────────────────────────
+
+const updateStatusSchema = z.object({
+  status: z.enum(['active', 'suspended', 'disabled']),
+});
+
+const updateRoleSchema = z.object({
+  role: z.enum(['user', 'admin']),
+});
+
 module.exports = {
   validate,
   registerSchema,
@@ -101,4 +113,6 @@ module.exports = {
   folderSchema,
   renameSchema,
   shareSchema,
+  updateStatusSchema,
+  updateRoleSchema,
 };
