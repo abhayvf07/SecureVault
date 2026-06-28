@@ -222,4 +222,17 @@ export const activityAPI = {
   getAnalytics: () => api.get('/activity/analytics'),
 };
 
+// ──────────────────────────────────────────────
+// Admin API
+// ──────────────────────────────────────────────
+
+export const adminAPI = {
+  getStats: () => api.get('/admin/stats'),
+  getUsers: (params = {}) => api.get('/admin/users', { params }),
+  updateUserStatus: (id, status) => api.patch(`/admin/users/${id}/status`, { status }),
+  updateUserRole: (id, role) => api.patch(`/admin/users/${id}/role`, { role }),
+  getAllFiles: (params = {}) => api.get('/admin/files', { params }),
+  deleteFile: (id) => api.delete(`/admin/files/${id}`),
+};
+
 export default api;
