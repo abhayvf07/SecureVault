@@ -19,7 +19,9 @@ const ALLOWED_MIME_TYPES = [
   'image/png',
   'image/gif',
   'image/webp',
-  'image/svg+xml',
+  'image/svg+xml',       // ⚠️ SVG WARNING: Currently safe because files are served as `attachment` downloads
+                         // (never rendered inline in browser). If you add an inline preview/thumbnail feature,
+                         // SVGs can contain embedded <script> tags — sanitize with DOMPurify server-side first.
   'application/pdf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

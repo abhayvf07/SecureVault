@@ -6,8 +6,6 @@ const {
   getAllUsers,
   updateUserStatus,
   updateUserRole,
-  getAllFiles,
-  adminDeleteFile,
   getAdminStats,
 } = require('../controllers/adminController');
 
@@ -17,6 +15,8 @@ const {
  * All routes below require authentication + admin role.
  * The apiLimiter in app.js already covers /api/* broadly,
  * so no extra rate-limit config is needed here.
+ *
+ * Note: No file-related routes exist here — admin has zero file access.
  */
 router.use(protect, requireAdmin);
 
@@ -27,9 +27,5 @@ router.get('/stats', getAdminStats);
 router.get('/users', getAllUsers);
 router.patch('/users/:id/status', validate(updateStatusSchema), updateUserStatus);
 router.patch('/users/:id/role', validate(updateRoleSchema), updateUserRole);
-
-// File oversight
-router.get('/files', getAllFiles);
-router.delete('/files/:id', adminDeleteFile);
 
 module.exports = router;

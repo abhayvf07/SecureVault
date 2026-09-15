@@ -1,18 +1,26 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   Download, Trash2, Edit3, Share2, MoreVertical,
-  Check, X, Copy, Clock, Lock, Hash
+  Check, X, Copy, Clock, Lock, Hash, Eye,
+  Move, FolderInput, Home
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import FileIcon from './FileIcon';
+import ConfirmModal from './ConfirmModal';
+import ContextMenu from './ContextMenu';
+import PreviewModal from './PreviewModal';
 import { filesAPI, shareAPI } from '../services/api';
 
 /**
  * FileCard
- * Displays file info with action buttons (download, rename, delete, share).
- * Includes inline rename, and a share modal with options.
+ * Displays file info with Drive-style interactions:
+ * - Double-click anywhere → opens PreviewModal
+ * - Right-click anywhere → custom context menu at cursor
+ * - MoreVertical (⋮) button → same menu anchored to button (for touch/mobile)
+ *
+ * Context menu items: Open, Download, Move to..., Copy to..., Rename, Share, Delete
  */
-const FileCard = ({ file, onFileChange }) => {
+const FileCard = ({ file, folders = [], onFileChange }) => {
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState(file.originalName);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -23,6 +31,11 @@ const FileCard = ({ file, onFileChange }) => {
   });
   const [shareResult, setShareResult] = useState(null);
   const [isSharing, setIsSharing] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [contextMenu, setContextMenu] = useState(null); // { x, y } or null
+  const moreButtonRef = useRef(null);
 
   // Format file size
   const formatSize = (bytes) => {
@@ -55,13 +68,16 @@ const FileCard = ({ file, onFileChange }) => {
   };
 
   const handleDelete = async () => {
-    if (!confirm(`Delete "${file.originalName}"?`)) return;
+    setIsDeleting(true);
     try {
       await filesAPI.delete(file._id);
       toast.success('File deleted');
+      setShowDeleteConfirm(false);
       onFileChange();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Delete failed');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -98,14 +114,126 @@ const FileCard = ({ file, onFileChange }) => {
     }
   };
 
+  const handleMove = async (folderId) => {
+    try {
+      await filesAPI.move(file._id, folderId);
+      toast.success('File moved');
+      onFileChange();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Move failed');
+    }
+  };
+
+  const handleCopy = async (folderId) => {
+    try {
+      await filesAPI.copy(file._id, folderId);
+      toast.success('File copied');
+      onFileChange();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Copy failed');
+    }
+  };
+
   const copyShareLink = () => {
     navigator.clipboard.writeText(shareResult.shareUrl);
     toast.success('Link copied to clipboard!');
   };
 
+  // ─── Context Menu ───
+  const handleContextMenu = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMoreClick = (e) => {
+    e.stopPropagation();
+    const rect = moreButtonRef.current.getBoundingClientRect();
+    setContextMenu({ x: rect.right - 200, y: rect.bottom + 4 });
+  };
+
+  const handleDoubleClick = (e) => {
+    // Don't open preview if user is renaming or clicked on an interactive element
+    if (isRenaming) return;
+    if (e.target.closest('button') || e.target.closest('input')) return;
+    setShowPreview(true);
+  };
+
+  // Build folder sub-menu items for Move and Copy
+  const buildFolderSubmenu = (action) => {
+    const items = [
+      {
+        label: 'Root (All Files)',
+        icon: Home,
+        active: file.folderId === null,
+        onClick: () => action(null),
+      },
+    ];
+
+    if (folders.length > 0) {
+      items.push({ divider: true });
+      folders.forEach((folder) => {
+        items.push({
+          label: folder.name,
+          icon: FolderInput,
+          active: file.folderId === folder._id,
+          onClick: () => action(folder._id),
+        });
+      });
+    }
+
+    return items;
+  };
+
+  const contextMenuItems = [
+    {
+      label: 'Open',
+      icon: Eye,
+      onClick: () => setShowPreview(true),
+    },
+    {
+      label: 'Download',
+      icon: Download,
+      onClick: handleDownload,
+    },
+    { divider: true },
+    {
+      label: 'Move to...',
+      icon: Move,
+      submenu: buildFolderSubmenu(handleMove),
+    },
+    {
+      label: 'Copy to...',
+      icon: Copy,
+      submenu: buildFolderSubmenu(handleCopy),
+    },
+    { divider: true },
+    {
+      label: 'Rename',
+      icon: Edit3,
+      onClick: () => { setIsRenaming(true); setNewName(file.originalName); },
+    },
+    {
+      label: 'Share',
+      icon: Share2,
+      onClick: () => { setShowShareModal(true); setShareResult(null); },
+    },
+    { divider: true },
+    {
+      label: 'Delete',
+      icon: Trash2,
+      danger: true,
+      onClick: () => setShowDeleteConfirm(true),
+    },
+  ];
+
   return (
     <>
-      <div className="glass-card-hover p-4 animate-fade-in">
+      <div
+        className="glass-card-hover p-4 animate-fade-in select-none"
+        onContextMenu={handleContextMenu}
+        onDoubleClick={handleDoubleClick}
+      >
         <div className="flex items-start gap-3">
           {/* File Icon */}
           <div className="w-10 h-10 rounded-lg bg-dark-800 flex items-center justify-center shrink-0">
@@ -143,31 +271,34 @@ const FileCard = ({ file, onFileChange }) => {
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-1 shrink-0">
-            <button onClick={handleDownload} className="btn-ghost p-1.5" title="Download">
-              <Download className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => { setIsRenaming(true); setNewName(file.originalName); }}
-              className="btn-ghost p-1.5"
-              title="Rename"
-            >
-              <Edit3 className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => { setShowShareModal(true); setShareResult(null); }}
-              className="btn-ghost p-1.5 hover:text-primary-400"
-              title="Share"
-            >
-              <Share2 className="w-4 h-4" />
-            </button>
-            <button onClick={handleDelete} className="btn-ghost p-1.5 hover:text-red-400" title="Delete">
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
+          {/* MoreVertical button — the only visible action button */}
+          <button
+            ref={moreButtonRef}
+            onClick={handleMoreClick}
+            className="btn-ghost p-1.5 shrink-0"
+            title="Actions"
+          >
+            <MoreVertical className="w-4 h-4" />
+          </button>
         </div>
       </div>
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          position={contextMenu}
+          items={contextMenuItems}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* Preview Modal */}
+      {showPreview && (
+        <PreviewModal
+          file={file}
+          onClose={() => setShowPreview(false)}
+        />
+      )}
 
       {/* Share Modal */}
       {showShareModal && (
@@ -295,6 +426,18 @@ const FileCard = ({ file, onFileChange }) => {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        title="Delete File"
+        message={`Are you sure you want to delete "${file.originalName}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+        loading={isDeleting}
+      />
     </>
   );
 };

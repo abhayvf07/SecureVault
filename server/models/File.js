@@ -52,6 +52,15 @@ const fileSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // V2.0: Encryption-at-rest fields (AES-256-GCM)
+    encryptionIV: {
+      type: String,
+      default: null,
+    },
+    encryptionAuthTag: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,

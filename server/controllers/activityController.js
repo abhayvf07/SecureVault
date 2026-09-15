@@ -23,7 +23,7 @@ const getActivityLogs = asyncHandler(async (req, res) => {
   // Optional filter by action type
   if (req.query.action) {
     const validActions = [
-      'UPLOAD', 'DOWNLOAD', 'DELETE', 'RENAME', 'SHARE', 
+      'UPLOAD', 'DOWNLOAD', 'DELETE', 'RENAME', 'MOVE', 'COPY', 'SHARE',
       'LOGIN', 'REGISTER', 'CREATE_FOLDER', 'DELETE_FOLDER'
     ];
     if (validActions.includes(req.query.action.toUpperCase())) {

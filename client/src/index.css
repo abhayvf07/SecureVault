@@ -32,6 +32,7 @@
   --animate-slide-down: slideDown 0.3s ease-out;
   --animate-scale-in: scaleIn 0.2s ease-out;
   --animate-pulse-soft: pulseSoft 2s infinite;
+  --animate-slide-right: slideRight 0.25s ease-out;
 
   @keyframes fadeIn {
     0% { opacity: 0; }
@@ -52,6 +53,10 @@
   @keyframes pulseSoft {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.7; }
+  }
+  @keyframes slideRight {
+    0% { opacity: 0; transform: translateX(-100%); }
+    100% { opacity: 1; transform: translateX(0); }
   }
 
   --blur-xs: 2px;
@@ -87,6 +92,21 @@
 
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-dark-500;
+  }
+
+  /* Focus-visible styles for keyboard navigation (accessibility) */
+  :focus-visible {
+    outline: 2px solid var(--color-primary-500);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Remove focus-visible on mouse click for buttons/inputs */
+  button:focus:not(:focus-visible),
+  input:focus:not(:focus-visible),
+  select:focus:not(:focus-visible),
+  a:focus:not(:focus-visible) {
+    outline: none;
   }
 }
 

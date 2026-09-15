@@ -28,9 +28,9 @@ const issueRefreshToken = async (userId, res) => {
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
     maxAge: refreshExpiresMs,
-    path: '/api/auth', // Only sent to auth endpoints
+    path: '/',
   });
 
   return refreshToken;
@@ -192,8 +192,8 @@ const logout = asyncHandler(async (req, res) => {
   res.clearCookie('refreshToken', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    path: '/api/auth',
+    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    path: '/',
   });
 
   res.status(200).json({
@@ -219,4 +219,60 @@ const getMe = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { register, login, refreshAccessToken, logout, getMe };
+// @desc    Change password (logged-in user)
+// @route   PUT /api/auth/change-password
+// @access  Private
+const changePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  // Fetch user with password field
+  const user = await User.findById(req.user._id).select('+password');
+  if (!user) {
+    throw new AppError('User not found', 404);
+  }
+
+  // Verify current password
+  const isMatch = await user.matchPassword(currentPassword);
+  if (!isMatch) {
+    throw new AppError('Current password is incorrect', 401);
+  }
+
+  // Prevent reuse of same password
+  const isSame = await user.matchPassword(newPassword);
+  if (isSame) {
+    throw new AppError('New password must be different from current password', 400);
+  }
+
+  // Update password (pre-save hook will hash it)
+  user.password = newPassword;
+  await user.save();
+
+  // Invalidate all existing refresh tokens for this user (force re-login on other devices)
+  await RefreshToken.deleteMany({ userId: user._id });
+
+  // Issue fresh tokens for this session
+  const accessToken = generateAccessToken(user._id);
+  await issueRefreshToken(user._id, res);
+
+  // Log activity
+  await logUserActivity({
+    userId: user._id,
+    action: 'CHANGE_PASSWORD',
+    resourceType: 'user',
+    resourceId: user._id,
+    resourceName: user.email,
+    ipAddress: req.ip,
+  });
+
+  logger.success(`Password changed for: ${user.email}`);
+
+  res.status(200).json({
+    success: true,
+    message: 'Password changed successfully',
+    data: {
+      token: accessToken,
+    },
+  });
+});
+
+module.exports = { register, login, refreshAccessToken, logout, getMe, changePassword };

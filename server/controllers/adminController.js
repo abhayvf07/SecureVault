@@ -1,19 +1,19 @@
 const User = require('../models/User');
 const File = require('../models/File');
-const SharedLink = require('../models/SharedLink');
 const { logUserActivity } = require('../services/activityService');
 const { AppError, asyncHandler } = require('../middleware/errorHandler');
-const uploadService = require('../services/uploadService');
+const { escapeRegex } = require('../utils/escapeRegex');
 
 /**
  * Admin Controller
- * Handles user management, file oversight, and platform-wide admin actions.
+ * Handles user management and platform-wide admin actions.
  * All endpoints require admin role (enforced via requireAdmin middleware).
  *
  * Design notes:
  * - Self-targeting is blocked on status/role changes to prevent lockout.
  * - The last admin can't be demoted by anyone.
  * - Every action is audit-logged with the admin as actor.
+ * - Admin has ZERO visibility into user files — no list, no view, no delete.
  */
 
 // @desc    Get all users (paginated, searchable)
@@ -25,8 +25,8 @@ const getAllUsers = asyncHandler(async (req, res) => {
   const query = search
     ? {
         $or: [
-          { name: new RegExp(search, 'i') },
-          { email: new RegExp(search, 'i') },
+          { name: { $regex: escapeRegex(search), $options: 'i' } },
+          { email: { $regex: escapeRegex(search), $options: 'i' } },
         ],
       }
     : {};
@@ -35,10 +35,34 @@ const getAllUsers = asyncHandler(async (req, res) => {
     .select('-password')
     .sort({ createdAt: -1 })
     .skip((page - 1) * limit)
-    .limit(Number(limit));
+    .limit(Number(limit))
+    .lean();
 
   const total = await User.countDocuments(query);
 
+  // Enrich each user with their file count and storage used
+  if (users.length > 0) {
+    const userIds = users.map((u) => u._id);
+    const fileStats = await File.aggregate([
+      { $match: { userId: { $in: userIds } } },
+      {
+        $group: {
+          _id: '$userId',
+          fileCount: { $sum: 1 },
+          storageUsed: { $sum: '$size' },
+        },
+      },
+    ]);
+
+    const statsMap = {};
+    fileStats.forEach((s) => { statsMap[s._id.toString()] = s; });
+
+    users.forEach((user) => {
+      const stats = statsMap[user._id.toString()];
+      user.fileCount = stats?.fileCount || 0;
+      user.storageUsed = stats?.storageUsed || 0;
+    });
+  }
   res.status(200).json({
     success: true,
     data: {
@@ -130,67 +154,6 @@ const updateUserRole = asyncHandler(async (req, res) => {
   });
 });
 
-// @desc    Get all files across all users (admin oversight)
-// @route   GET /api/admin/files
-// @access  Admin
-const getAllFiles = asyncHandler(async (req, res) => {
-  const { search = '', page = 1, limit = 20 } = req.query;
-
-  const query = search
-    ? { originalName: { $regex: search, $options: 'i' } }
-    : {};
-
-  const files = await File.find(query)
-    .populate('userId', 'name email')
-    .sort({ createdAt: -1 })
-    .skip((page - 1) * limit)
-    .limit(Number(limit));
-
-  const total = await File.countDocuments(query);
-
-  res.status(200).json({
-    success: true,
-    data: {
-      files,
-      total,
-      page: Number(page),
-      pages: Math.ceil(total / limit),
-    },
-  });
-});
-
-// @desc    Admin delete file (bypasses ownership check)
-// @route   DELETE /api/admin/files/:id
-// @access  Admin
-const adminDeleteFile = asyncHandler(async (req, res) => {
-  const file = await File.findById(req.params.id);
-  if (!file) throw new AppError('File not found', 404);
-
-  // Delete from storage (local or cloud)
-  await uploadService.deleteFile(file.filePath, file.storageType || 'local', file.publicId);
-
-  // Clean up any shared links referencing this file
-  await SharedLink.deleteMany({ fileId: file._id });
-
-  // Delete from database
-  await File.findByIdAndDelete(req.params.id);
-
-  await logUserActivity({
-    userId: req.user._id,
-    action: 'ADMIN_DELETE_FILE',
-    resourceType: 'file',
-    resourceId: file._id,
-    resourceName: file.originalName,
-    details: { originalOwnerId: file.userId },
-    ipAddress: req.ip,
-  });
-
-  res.status(200).json({
-    success: true,
-    message: 'File deleted by admin',
-  });
-});
-
 // @desc    Get platform-wide stats for admin dashboard
 // @route   GET /api/admin/stats
 // @access  Admin
@@ -225,7 +188,8 @@ module.exports = {
   getAllUsers,
   updateUserStatus,
   updateUserRole,
-  getAllFiles,
-  adminDeleteFile,
   getAdminStats,
 };
+
+
+

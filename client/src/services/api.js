@@ -139,6 +139,7 @@ export const authAPI = {
   getMe: () => api.get('/auth/me'),
   refresh: () => api.post('/auth/refresh'),
   logout: () => api.post('/auth/logout'),
+  changePassword: (data) => api.put('/auth/change-password', data),
 };
 
 // ──────────────────────────────────────────────
@@ -172,6 +173,15 @@ export const filesAPI = {
       link.remove();
       window.URL.revokeObjectURL(url);
     }, 100);
+  },
+
+  move: (id, folderId) => api.put(`/files/${id}/move`, { folderId }),
+
+  copy: (id, folderId) => api.post(`/files/${id}/copy`, { folderId }),
+
+  getBlob: async (id) => {
+    const res = await api.get(`/files/download/${id}`, { responseType: 'blob' });
+    return res.data;
   },
 };
 
@@ -231,8 +241,6 @@ export const adminAPI = {
   getUsers: (params = {}) => api.get('/admin/users', { params }),
   updateUserStatus: (id, status) => api.patch(`/admin/users/${id}/status`, { status }),
   updateUserRole: (id, role) => api.patch(`/admin/users/${id}/role`, { role }),
-  getAllFiles: (params = {}) => api.get('/admin/files', { params }),
-  deleteFile: (id) => api.delete(`/admin/files/${id}`),
 };
 
 export default api;

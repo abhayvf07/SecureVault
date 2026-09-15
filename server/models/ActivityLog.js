@@ -23,6 +23,8 @@ const activityLogSchema = new mongoose.Schema(
         'DOWNLOAD',
         'DELETE',
         'RENAME',
+        'MOVE',
+        'COPY',
         'SHARE',
         'LOGIN',
         'REGISTER',
@@ -33,6 +35,7 @@ const activityLogSchema = new mongoose.Schema(
         'PROMOTE_ADMIN',
         'DEMOTE_ADMIN',
         'ADMIN_DELETE_FILE',
+        'CHANGE_PASSWORD',
       ],
     },
     resourceType: {

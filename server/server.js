@@ -49,6 +49,14 @@ const startServer = async () => {
     await mongoose.connect(process.env.MONGO_URI);
     logger.success(`MongoDB connected: ${mongoose.connection.host}`);
 
+    // One-time cleanup: reset any orphaned download locks from a previous boot/crash.
+    // No download can legitimately still be in-progress from before this process started.
+    const File = require('./models/File');
+    const resetResult = await File.updateMany({ isDownloading: true }, { isDownloading: false });
+    if (resetResult.modifiedCount > 0) {
+      logger.info(`Reset ${resetResult.modifiedCount} orphaned download lock(s) from previous boot`);
+    }
+
     let port = initialPort;
     
     // Only try up to our maximum offset limit

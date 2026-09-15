@@ -3,8 +3,8 @@ import { useAuth } from '../context/useAuth';
 import { adminAPI } from '../services/api';
 import Navbar from '../components/Navbar';
 import {
-  Users, FileText, HardDrive, Shield, ShieldOff, UserCheck, UserX,
-  Trash2, ChevronLeft, ChevronRight, Search, Loader2, Crown,
+  Users, HardDrive, Shield, ShieldOff, UserCheck, UserX,
+  ChevronLeft, ChevronRight, Search, Loader2, Crown,
   Activity, Ban, CheckCircle, AlertTriangle, Files
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -14,19 +14,22 @@ import toast from 'react-hot-toast';
  * Platform-wide admin panel with:
  * - Stats overview (users, files, storage)
  * - User management (search, paginate, suspend/activate, promote/demote)
- * - File management (all files across users, admin delete)
- * - Tab-based navigation between Users and Files views
+ *
+ * Note: Admin has ZERO visibility into user files — no file listing,
+ * no file viewing, no file deletion. Files are completely outside admin's reach.
  */
+
+// ─── Shared Helpers ───────────────────────────────────
+const formatBytes = (bytes) => {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+};
 
 // ─── Stats Cards ───────────────────────────────────────
 const StatsPanel = ({ stats, loading }) => {
-  const formatBytes = (bytes) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  };
 
   const cards = [
     {
@@ -106,7 +109,7 @@ const RoleBadge = ({ role }) => {
   return <span className="badge text-dark-400 bg-dark-700/50 border border-dark-600/30">User</span>;
 };
 
-// ─── User Management Tab ───────────────────────────────
+// ─── User Management ───────────────────────────────────
 const UserManagement = ({ currentUserId }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -224,9 +227,21 @@ const UserManagement = ({ currentUserId }) => {
                         <StatusBadge status={user.status} />
                       </div>
                       <p className="text-xs text-dark-500 truncate">{user.email}</p>
-                      <p className="text-xs text-dark-600 mt-0.5">
-                        Joined {new Date(user.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </p>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="text-xs text-dark-600">
+                          Joined {new Date(user.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                        <span className="text-xs text-dark-700">•</span>
+                        <span className="text-xs text-dark-500 flex items-center gap-1">
+                          <Files className="w-3 h-3" />
+                          {user.fileCount ?? 0} files
+                        </span>
+                        <span className="text-xs text-dark-700">•</span>
+                        <span className="text-xs text-dark-500 flex items-center gap-1">
+                          <HardDrive className="w-3 h-3" />
+                          {formatBytes(user.storageUsed ?? 0)}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Actions */}
@@ -316,160 +331,9 @@ const UserManagement = ({ currentUserId }) => {
   );
 };
 
-// ─── File Management Tab ───────────────────────────────
-const FileManagement = () => {
-  const [files, setFiles] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [deleteLoading, setDeleteLoading] = useState(null);
-
-  const fetchFiles = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await adminAPI.getAllFiles({ search, page, limit: 15 });
-      setFiles(res.data.data.files);
-      setTotalPages(res.data.data.pages);
-    } catch {
-      toast.error('Failed to load files');
-    } finally {
-      setLoading(false);
-    }
-  }, [search, page]);
-
-  useEffect(() => {
-    const timer = setTimeout(fetchFiles, 300);
-    return () => clearTimeout(timer);
-  }, [fetchFiles]);
-
-  useEffect(() => { setPage(1); }, [search]);
-
-  const formatBytes = (bytes) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  };
-
-  const handleDelete = async (fileId, fileName) => {
-    if (!window.confirm(`Delete "${fileName}"? This cannot be undone.`)) return;
-    setDeleteLoading(fileId);
-    try {
-      await adminAPI.deleteFile(fileId);
-      toast.success('File deleted');
-      fetchFiles();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to delete file');
-    } finally {
-      setDeleteLoading(null);
-    }
-  };
-
-  return (
-    <div>
-      {/* Search */}
-      <div className="relative mb-4">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-500" />
-        <input
-          type="text"
-          placeholder="Search files by name..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="input-field pl-10 text-sm py-2.5"
-          id="admin-file-search"
-        />
-      </div>
-
-      {/* Files List */}
-      {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="w-6 h-6 text-primary-500 animate-spin" />
-        </div>
-      ) : files.length === 0 ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="text-center">
-            <FileText className="w-10 h-10 text-dark-600 mx-auto mb-2" />
-            <p className="text-dark-400">No files found</p>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="space-y-2">
-            {files.map((file, idx) => (
-              <div
-                key={file._id}
-                className="glass-card-hover p-4 animate-fade-in"
-                style={{ animationDelay: `${idx * 30}ms` }}
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-9 h-9 rounded-lg bg-dark-700 flex items-center justify-center shrink-0">
-                    <FileText className="w-4 h-4 text-dark-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-dark-100 truncate">{file.originalName}</p>
-                    <div className="flex items-center gap-3 text-xs text-dark-500 mt-0.5">
-                      <span>{formatBytes(file.size)}</span>
-                      <span>•</span>
-                      <span className="truncate">
-                        Owner: {file.userId?.name || file.userId?.email || 'Unknown'}
-                      </span>
-                      <span>•</span>
-                      <span>{new Date(file.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleDelete(file._id, file.originalName)}
-                    disabled={deleteLoading === file._id}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all disabled:opacity-50 shrink-0"
-                    title="Delete file"
-                  >
-                    {deleteLoading === file._id ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Trash2 className="w-3 h-3" />
-                    )}
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-3 mt-6" id="admin-files-pagination">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="btn-ghost disabled:opacity-30"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <span className="text-sm text-dark-400">
-                Page <span className="text-dark-200 font-medium">{page}</span> of{' '}
-                <span className="text-dark-200 font-medium">{totalPages}</span>
-              </span>
-              <button
-                onClick={() => setPage((p) => p + 1)}
-                disabled={page >= totalPages}
-                className="btn-ghost disabled:opacity-30"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-};
-
 // ─── Main Admin Page ───────────────────────────────────
 const AdminDashboardPage = () => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('users');
   const [stats, setStats] = useState({});
   const [statsLoading, setStatsLoading] = useState(true);
 
@@ -488,14 +352,9 @@ const AdminDashboardPage = () => {
     fetchStats();
   }, []);
 
-  const tabs = [
-    { id: 'users', label: 'Users', icon: Users },
-    { id: 'files', label: 'Files', icon: FileText },
-  ];
-
   return (
     <div className="min-h-screen flex flex-col bg-dark-950">
-      <Navbar searchQuery="" onSearchChange={() => {}} />
+      <Navbar searchQuery="" onSearchChange={() => {}} showSearch={false} />
 
       <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-8">
         {/* Header */}
@@ -505,37 +364,22 @@ const AdminDashboardPage = () => {
           </div>
           <div>
             <h1 className="text-xl font-bold text-dark-100">Admin Dashboard</h1>
-            <p className="text-sm text-dark-500">Manage users, files, and platform settings</p>
+            <p className="text-sm text-dark-500">Manage users and platform settings</p>
           </div>
         </div>
 
         {/* Stats */}
         <StatsPanel stats={stats} loading={statsLoading} />
 
-        {/* Tabs */}
-        <div className="flex items-center gap-1 mb-6 border-b border-dark-700/50 pb-3">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                activeTab === tab.id
-                  ? 'bg-primary-500/15 text-primary-400 border border-primary-500/20'
-                  : 'text-dark-400 hover:bg-dark-800 hover:text-dark-200'
-              }`}
-            >
-              <tab.icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          ))}
+        {/* User Management (no tabs needed — single view) */}
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold text-dark-300 uppercase tracking-wider flex items-center gap-2">
+            <Users className="w-4 h-4" />
+            User Management
+          </h2>
         </div>
 
-        {/* Tab Content */}
-        {activeTab === 'users' ? (
-          <UserManagement currentUserId={user?.id} />
-        ) : (
-          <FileManagement />
-        )}
+        <UserManagement currentUserId={user?.id} />
       </main>
     </div>
   );
