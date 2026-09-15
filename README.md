@@ -6,6 +6,18 @@ A full-stack file storage and sharing app I built using the MERN stack, inspired
 
 ## Preview
 
+### Sign In
+Secure login with session recovery through the refresh-token cookie.
+<img width="1920" height="923" alt="Sign In" src="Screenshots/Sign In.png" />
+
+---
+
+### Sign Up
+Create an account with validated user details and password protection.
+<img width="1920" height="923" alt="Sign Up" src="Screenshots/Sign Up.png" />
+
+---
+
 ### Dashboard
 Overview of your files, folders and recent activity.
 <img width="1920" height="923" alt="Dashboard" src="Screenshots/Dashboard.png" />
@@ -26,7 +38,7 @@ See everything that happened — uploads, deletes, shares, logins.
 
 ### Admin Dashboard
 Manage users, files, and platform settings — suspend accounts, promote admins, delete files.
-<img width="1920" height="923" alt="Admin" src="Screenshots/Admin.png" />
+<img width="1920" height="923" alt="Admin Dashboard" src="Screenshots/Admin%20Dashboard.png" />
 
 ---
 
@@ -45,6 +57,7 @@ Building this taught me a lot about JWT refresh token rotation, secure cookie ha
 - Role-based access control (user/admin roles)
 - Protected API routes
 - Input validation using Zod
+- Change-password flow for authenticated users
 - Environment variable protection
 
 ### Admin Dashboard
@@ -58,7 +71,10 @@ Building this taught me a lot about JWT refresh token rotation, secure cookie ha
 ### File Management
 - Upload files with proper validation
 - Organize into folders
-- Download and delete files
+- Download, delete, rename, move and copy files
+- Search, filter, sort and paginate file listings
+- Context menus and modal previews for common file actions
+- Per-user storage quota support
 - File metadata handling
 
 ### File Sharing
@@ -70,9 +86,14 @@ Building this taught me a lot about JWT refresh token rotation, secure cookie ha
 - When using Cloudinary, downloads stream directly from CDN
 
 ### Activity Tracking
-- Logs every user action — upload, delete, share, login
+- Logs every user action — registration, login, upload, download, delete, rename, move, copy and share
 - Logs admin actions — suspend, promote, file deletions
 - Backend logging system
+
+### Storage & Encryption
+- Local disk storage for development and optional Cloudinary storage for hosted deployments
+- Optional AES-256-GCM encryption at rest for locally stored files
+- Safe relative file paths and path traversal protection
 
 ### Performance & Scalability
 - Pagination on file listings (12 items/page, up to 50)
@@ -93,6 +114,15 @@ Building this taught me a lot about JWT refresh token rotation, secure cookie ha
 - **Search UX**: Fixed dashboard search debounce to apply consistently on all queries (not just when typing)
 - **Blob Cleanup**: Delayed object URL revocation prevents browser download race conditions
 - **Path Portability**: Local file paths stored as relative (`uploads/uuid.jpg`) instead of absolute for server migration support
+
+## Recent Changes (September 2026)
+
+- **File actions**: Added move and copy operations, plus improved rename and delete workflows.
+- **File discovery**: Added search, MIME-type filters, sorting and paginated results.
+- **Storage controls**: Added configurable per-user storage quotas and optional file encryption at rest.
+- **Account security**: Added authenticated password changes and stronger validation coverage.
+- **Interface**: Added file preview, context-menu actions, confirmation dialogs and updated dashboard/admin views.
+- **Upload safety**: Added file-type checks, upload limits and safer handling for local storage paths.
 
 ---
 
@@ -139,11 +169,14 @@ The frontend also has a clean structure — pages, reusable components, hooks/co
 | POST | `/api/auth/refresh` | Refresh access token |
 | POST | `/api/auth/logout` | Logout |
 | GET | `/api/auth/me` | Get logged in user |
+| PUT | `/api/auth/change-password` | Change the logged-in user's password |
 | POST | `/api/files/upload` | Upload a file |
-| GET | `/api/files` | List all files |
+| GET | `/api/files` | List files with folder, search, type, sort and pagination filters |
 | DELETE | `/api/files/:id` | Delete a file |
 | PUT | `/api/files/:id/rename` | Rename a file |
 | GET | `/api/files/download/:id` | Download a file |
+| PUT | `/api/files/:id/move` | Move a file to a folder or the root |
+| POST | `/api/files/:id/copy` | Copy a file into a folder or the root |
 | POST | `/api/share/:fileId` | Create a share link |
 | GET | `/api/share/:token/info` | Get share link info (no password needed) |
 | POST | `/api/share/:token/download` | Download via share link (with optional password) |
@@ -173,10 +206,14 @@ SecureVault/
 │   │   ├── components/
 │   │   │   ├── AdminRoute.jsx
 │   │   │   ├── AnalyticsPanel.jsx
+│   │   │   ├── ChangePasswordModal.jsx
+│   │   │   ├── ConfirmModal.jsx
+│   │   │   ├── ContextMenu.jsx
 │   │   │   ├── FileCard.jsx
 │   │   │   ├── FileIcon.jsx
 │   │   │   ├── FolderList.jsx
 │   │   │   ├── Navbar.jsx
+│   │   │   ├── PreviewModal.jsx
 │   │   │   ├── ProtectedRoute.jsx
 │   │   │   ├── SkeletonLoader.jsx
 │   │   │   └── UploadZone.jsx
@@ -235,6 +272,8 @@ SecureVault/
 │   │   ├── activityService.js
 │   │   └── uploadService.js
 │   ├── utils/
+│   │   ├── encryption.js
+│   │   ├── escapeRegex.js
 │   │   ├── generateToken.js
 │   │   ├── logger.js
 │   │   ├── streamRemoteFile.js
@@ -274,16 +313,19 @@ PORT=5000
 NODE_ENV=development
 MONGO_URI=mongodb+srv://your_user:your_password@cluster.mongodb.net/securevault
 JWT_SECRET=generate_random_secret_here
-JWT_REFRESH_SECRET=generate_another_random_secret_here
 JWT_ACCESS_EXPIRES_IN=15m
 JWT_REFRESH_EXPIRES_IN=7d
 MAX_FILE_SIZE=5242880
+MAX_USER_STORAGE=104857600
 CLIENT_URL=http://localhost:5173
 
 # leave blank if you want to use local storage
 CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
+
+# Optional AES-256-GCM encryption key for files stored locally
+# FILE_ENCRYPTION_KEY=generate_a_64_character_hex_key
 ```
 
 You can generate secure JWT secrets like this:
@@ -394,7 +436,6 @@ Things to do before going to production:
 
 - Deploy the whole stack (frontend + backend + database)
 - Unit tests for auth, file operations, and share links
-- File move between folders
 - Real-time notifications for shared file downloads
 - Swagger/OpenAPI docs for easier API exploration
 - Activity log archival strategy for large deployments
