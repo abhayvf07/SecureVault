@@ -3,9 +3,12 @@ const path = require('path');
 const logger = require('../utils/logger');
 
 /**
- * Upload Service — Storage Abstraction Layer
+ * Upload Service — Storage Abstraction Layer (function-based facade)
  *
  * Provides a unified interface for file storage operations.
+ * This is a function-based facade (not class/interface-based) — all storage
+ * backends are accessed through the same exported functions, and the active
+ * backend is selected at runtime via environment variables.
  * Supports two backends:
  *   - LOCAL (default): Files stored in /uploads directory
  *   - CLOUDINARY (optional): Files stored on Cloudinary CDN

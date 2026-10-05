@@ -107,7 +107,7 @@ Building this taught me a lot about JWT refresh token rotation, secure cookie ha
 
 ## Improvements (June 2026)
 
-- **Query Optimization**: Replaced N+1 folder file-count queries with MongoDB aggregation (50x faster for 50 folders)
+- **Query Optimization**: Replaced N+1 folder file-count queries with single MongoDB aggregation (51 round-trips → 1)
 - **Download Safety**: File locking prevents deletion race conditions; download flag released after stream completes
 - **Share Route Security**: Removed legacy GET endpoint; share downloads now require POST with password submission
 - **Logging Reliability**: Activity logging wrapped in safe try-catch so database failures don't cascade to user operations
@@ -386,7 +386,7 @@ This was honestly the most fun part to work on. Security is usually treated as a
 **Auth & Authorization**
 - Access token lives in memory only — not localStorage, so XSS can't steal it
 - Refresh token stored in httpOnly cookie — JavaScript can't access it at all
-- Token rotation on every refresh, old tokens are invalidated
+- Token rotation on every refresh — tokens are SHA-256 hashed before storage, and reuse detection invalidates the entire session chain if a rotated-out token is replayed
 - Role-based access control — admin routes check `req.user.role` via live DB lookup (no stale-token window)
 - Admin-only middleware (`requireAdmin`) gates all `/api/admin/*` endpoints
 - Self-lockout prevention — admins can't demote themselves or the last remaining admin
@@ -412,7 +412,7 @@ This was honestly the most fun part to work on. Security is usually treated as a
 
 **Passwords**
 - Strong password policy enforced at signup
-- Share link passwords are bcrypt hashed with 12 salt rounds — never stored as plain text
+- Share link passwords are bcrypt hashed (10 salt rounds) — never stored as plain text
 
 ---
 
@@ -444,8 +444,8 @@ Things to do before going to production:
 
 These are the deeper, production-grade changes I want to tackle once the core features are stable. They're the kind of things that separate a project that "works on my machine" from one that survives years of real-world use.
 
-**Database-Level Atomicity & Transactional Uploads**
-Right now the share-link download counter and the file-delete lock work fine, but they're not using true database-level atomic operations — under heavy concurrent load there's a theoretical window for race conditions. I want to move both to MongoDB's native atomic operators (`$inc`, `findOneAndUpdate`) so the database itself guarantees correctness, no matter how many requests hit at the same time. Beyond that, the upload flow today does three things in sequence: save the file to disk, create the database record, and log the activity. If the server crashes between any of those steps, you could end up with an orphaned file on disk with no matching DB row, or a database entry pointing to a file that never finished writing. The fix is wrapping that entire sequence in a MongoDB transaction (which requires a replica set — something the deployment notes already recommend) or using a short-lived distributed lock. Either way, the goal is making the upload pipeline all-or-nothing: it either fully succeeds or fully rolls back, no in-between states.
+**Transactional Uploads**
+The share-link download counter already uses MongoDB's native atomic operators (`findOneAndUpdate` with `$inc`), so concurrent downloads are handled correctly at the database level — no race conditions. The remaining gap is in the upload flow, which does three things in sequence: save the file to disk, create the database record, and log the activity. If the server crashes between any of those steps, you could end up with an orphaned file on disk with no matching DB row, or a database entry pointing to a file that never finished writing. The fix is wrapping that entire sequence in a MongoDB transaction (which requires a replica set — something the deployment notes already recommend) or using a short-lived distributed lock. Either way, the goal is making the upload pipeline all-or-nothing: it either fully succeeds or fully rolls back, no in-between states.
 
 **Background Reconciliation Worker**
 Even with transactions, things can go wrong over months and years of production use — a deploy gone bad, a manual fix that missed a step, a disk that filled up mid-write. I want to add a lightweight background job (cron-style or using MongoDB change streams) that periodically scans the `uploads/` directory and compares it against the `File` collection. Any file on disk without a matching database document gets flagged (and optionally cleaned up), and any database record pointing to a missing file gets reported. It's the kind of operational tooling that gives you confidence the system is healthy without having to manually dig through logs.

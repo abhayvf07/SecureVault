@@ -88,6 +88,88 @@ const upload = multer({
 });
 
 /**
+ * Validate text-based files that file-type can't detect via magic bytes.
+ * file-type relies on binary signatures; plain text formats (txt, csv) have none.
+ * For these, we verify the content is valid UTF-8 with no binary/null bytes.
+ * For SVGs, we additionally reject embedded scripts (stored-XSS vector).
+ *
+ * @param {string} filePath - Path to the uploaded file on disk
+ * @param {string} declaredMimeType - The MIME type declared by the client
+ * @returns {object} { valid: boolean, reason?: string, actualType?: string }
+ */
+const validateTextBasedFile = (filePath, declaredMimeType) => {
+  const TEXT_MIMES = ['text/plain', 'text/csv'];
+  const SVG_MIME = 'image/svg+xml';
+
+  // Only handle text-based types that lack magic bytes
+  if (!TEXT_MIMES.includes(declaredMimeType) && declaredMimeType !== SVG_MIME) {
+    // file-type couldn't detect this, and it's not a known text format — suspicious
+    return {
+      valid: false,
+      reason: `Could not verify file content for declared type (${declaredMimeType})`,
+    };
+  }
+
+  try {
+    // Read first 64KB to avoid memory issues with large files
+    const fd = fs.openSync(filePath, 'r');
+    const buffer = Buffer.alloc(65536);
+    const bytesRead = fs.readSync(fd, buffer, 0, 65536, 0);
+    fs.closeSync(fd);
+    const content = buffer.slice(0, bytesRead);
+
+    // Check for null bytes — binary content disguised as text
+    if (content.includes(0x00)) {
+      return {
+        valid: false,
+        reason: 'File contains binary content but was declared as a text file',
+      };
+    }
+
+    // SVG-specific: reject embedded scripts and event handlers (stored-XSS vectors).
+    // This is defense-in-depth — files are served as attachment downloads, but if inline
+    // preview is ever added, unscreened SVGs would be a direct XSS vector.
+    if (declaredMimeType === SVG_MIME) {
+      const text = content.toString('utf-8').toLowerCase();
+
+      const dangerousPatterns = [
+        /<script[\s>]/i,
+        /on\w+\s*=/i,           // onclick=, onload=, onerror=, etc.
+        /javascript\s*:/i,      // javascript: URIs
+        /<iframe[\s>]/i,
+        /<embed[\s>]/i,
+        /<object[\s>]/i,
+        /<foreignobject[\s>]/i,
+      ];
+
+      for (const pattern of dangerousPatterns) {
+        if (pattern.test(text)) {
+          return {
+            valid: false,
+            reason: 'SVG contains potentially dangerous content (embedded scripts or event handlers). Sanitize before uploading.',
+          };
+        }
+      }
+
+      // Verify it at least looks like SVG/XML
+      if (!text.includes('<svg') && !text.includes('<?xml')) {
+        return {
+          valid: false,
+          reason: 'File does not appear to be a valid SVG document',
+        };
+      }
+    }
+
+    return { valid: true, actualType: declaredMimeType };
+  } catch (err) {
+    return {
+      valid: false,
+      reason: `Could not validate text file content: ${err.message}`,
+    };
+  }
+};
+
+/**
  * Validate file magic bytes (actual file content type, not spoofed MIME)
  * Prevents attackers from uploading .exe as .jpg by just renaming
  */
@@ -96,9 +178,10 @@ const validateFileMagicBytes = async (filePath, declaredMimeType) => {
     const { fileTypeFromFile } = await import('file-type');
     const fileType = await fileTypeFromFile(filePath);
 
-    // If file-type can't determine the type, allow it (e.g., plain text files)
+    // file-type can't detect text-based formats (txt, csv, svg) because they have
+    // no magic bytes. Fall through to content-based validation for these types.
     if (!fileType) {
-      return { valid: true, actualType: null };
+      return validateTextBasedFile(filePath, declaredMimeType);
     }
 
     // Check if actual MIME type matches declared MIME type

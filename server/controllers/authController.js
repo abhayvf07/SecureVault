@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const RefreshToken = require('../models/RefreshToken');
+const crypto = require('crypto');
 const { generateAccessToken, generateRefreshToken } = require('../utils/generateToken');
 const logger = require('../utils/logger');
 const { AppError, asyncHandler } = require('../middleware/errorHandler');
@@ -10,17 +11,33 @@ const { logUserActivity } = require('../services/activityService');
  * Auth Controller
  * Handles user registration, login, token refresh, and logout.
  * Uses short-lived access tokens (15min) + long-lived refresh tokens (7d).
+ * Refresh tokens are SHA-256 hashed before storage and support reuse detection
+ * via token families — a replayed (already-rotated) token invalidates the entire chain.
  */
 
+/**
+ * Hash a raw refresh token with SHA-256 before storage or lookup.
+ * SHA-256 is appropriate here (vs bcrypt) because refresh tokens are 256-bit random —
+ * they have enough entropy that brute-force is infeasible even without a slow hash.
+ */
+const hashToken = (token) => {
+  return crypto.createHash('sha256').update(token).digest('hex');
+};
+
 // ─── Helper: Save refresh token to DB and set httpOnly cookie ───
-const issueRefreshToken = async (userId, res) => {
+const issueRefreshToken = async (userId, res, family = null) => {
   const refreshToken = generateRefreshToken();
   const refreshExpiresMs = parseDurationMs(process.env.JWT_REFRESH_EXPIRES_IN, 7 * 24 * 60 * 60 * 1000);
   const expiresAt = new Date(Date.now() + refreshExpiresMs);
 
+  // Generate new family ID for first token in chain (login/register),
+  // or inherit family from the rotated token (refresh)
+  const tokenFamily = family || crypto.randomUUID();
+
   await RefreshToken.create({
     userId,
-    token: refreshToken,
+    tokenHash: hashToken(refreshToken),
+    family: tokenFamily,
     expiresAt,
   });
 
@@ -151,22 +168,41 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     throw new AppError('No refresh token provided', 401);
   }
 
-  // ✅ FIX: Atomically find and delete the token in one step. 
-  // This solves the TTL race condition and enforces token rotation cleanly.
-  const storedToken = await RefreshToken.findOneAndDelete({ token: refreshToken });
+  const tokenHash = hashToken(refreshToken);
+
+  // Atomically find an unused, non-expired token and mark it as used.
+  // findOneAndUpdate is atomic — if two requests race with the same token,
+  // only one will match the { used: false } condition.
+  const storedToken = await RefreshToken.findOneAndUpdate(
+    {
+      tokenHash,
+      used: false,
+      expiresAt: { $gt: new Date() },
+    },
+    { $set: { used: true } },
+  );
 
   if (!storedToken) {
+    // Token not found as unused — either invalid, expired, or REUSED.
+    // Check if it exists but was already marked used (reuse detection).
+    const reusedToken = await RefreshToken.findOne({ tokenHash });
+    if (reusedToken) {
+      // ⚠️ REUSE DETECTED: This token was already rotated out.
+      // Someone (attacker or out-of-sync client) is replaying a stale token.
+      // Invalidate the entire family to protect the legitimate session.
+      logger.warn(
+        `Refresh token reuse detected for user ${reusedToken.userId}, ` +
+        `family ${reusedToken.family}. Invalidating entire token family.`
+      );
+      await RefreshToken.deleteMany({ family: reusedToken.family });
+      throw new AppError('Session compromised — all sessions in this chain have been invalidated. Please log in again.', 401);
+    }
     throw new AppError('Invalid refresh token', 401);
   }
 
-  // Check if expired (in case MongoDB's TTL background job hasn't run yet)
-  if (storedToken.expiresAt < new Date()) {
-    throw new AppError('Refresh token expired', 401);
-  }
-
-  // Issue new tokens
+  // Issue new tokens in the same family (rotation chain continues)
   const newAccessToken = generateAccessToken(storedToken.userId);
-  await issueRefreshToken(storedToken.userId, res);
+  await issueRefreshToken(storedToken.userId, res, storedToken.family);
 
   res.status(200).json({
     success: true,
@@ -184,8 +220,8 @@ const logout = asyncHandler(async (req, res) => {
   const { refreshToken } = req.cookies;
 
   if (refreshToken) {
-    // Delete refresh token from DB
-    await RefreshToken.findOneAndDelete({ token: refreshToken });
+    // Delete refresh token from DB (look up by hash, raw token never stored)
+    await RefreshToken.findOneAndDelete({ tokenHash: hashToken(refreshToken) });
   }
 
   // Clear the cookie

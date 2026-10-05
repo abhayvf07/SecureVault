@@ -70,4 +70,9 @@ const fileSchema = new mongoose.Schema(
 // Compound index for efficient queries: get user's files, optionally filtered by folder
 fileSchema.index({ userId: 1, folderId: 1 });
 
+// Standalone index on folderId — needed for the $lookup aggregation in getFolders.
+// The compound index above can't serve a $lookup that joins only on folderId
+// (MongoDB requires the prefix field to be in the query for compound index use).
+fileSchema.index({ folderId: 1 });
+
 module.exports = mongoose.model("File", fileSchema);
