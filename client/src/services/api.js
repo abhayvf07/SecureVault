@@ -58,6 +58,16 @@ api.interceptors.request.use(
 let isRefreshing = false;
 let failedQueue = [];
 
+let globalRefreshPromise = null;
+const doRefresh = () => {
+  if (!globalRefreshPromise) {
+    globalRefreshPromise = api.post('/auth/refresh').finally(() => {
+      globalRefreshPromise = null;
+    });
+  }
+  return globalRefreshPromise;
+};
+
 const processQueue = (error, token = null) => {
   failedQueue.forEach(({ resolve, reject }) => {
     if (error) {
@@ -96,7 +106,7 @@ api.interceptors.response.use(
 
       try {
         // Try to refresh the access token
-        const res = await api.post('/auth/refresh');
+        const res = await doRefresh();
         const newToken = res.data.data.token;
         
         // Update token in memory (AuthContext will be notified via updateToken)
@@ -137,7 +147,7 @@ export const authAPI = {
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
   getMe: () => api.get('/auth/me'),
-  refresh: () => api.post('/auth/refresh'),
+  refresh: () => doRefresh(),
   logout: () => api.post('/auth/logout'),
   changePassword: (data) => api.put('/auth/change-password', data),
 };

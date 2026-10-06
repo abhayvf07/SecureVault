@@ -187,6 +187,13 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     // Check if it exists but was already marked used (reuse detection).
     const reusedToken = await RefreshToken.findOne({ tokenHash });
     if (reusedToken) {
+      // 10-second grace window for concurrent requests (e.g., StrictMode)
+      const timeSinceUpdate = Date.now() - new Date(reusedToken.updatedAt).getTime();
+      if (timeSinceUpdate < 10000) {
+        logger.warn(`Grace window: Concurrent refresh for user ${reusedToken.userId}. Ignoring reuse detection.`);
+        throw new AppError('Concurrent request. Please try again.', 401);
+      }
+
       // ⚠️ REUSE DETECTED: This token was already rotated out.
       // Someone (attacker or out-of-sync client) is replaying a stale token.
       // Invalidate the entire family to protect the legitimate session.

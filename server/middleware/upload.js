@@ -98,7 +98,7 @@ const upload = multer({
  * @returns {object} { valid: boolean, reason?: string, actualType?: string }
  */
 const validateTextBasedFile = (filePath, declaredMimeType) => {
-  const TEXT_MIMES = ['text/plain', 'text/csv'];
+  const TEXT_MIMES = ['text/plain', 'text/csv', 'application/vnd.ms-excel'];
   const SVG_MIME = 'image/svg+xml';
 
   // Only handle text-based types that lack magic bytes
@@ -187,6 +187,18 @@ const validateFileMagicBytes = async (filePath, declaredMimeType) => {
     // Check if actual MIME type matches declared MIME type
     if (fileType.mime === declaredMimeType) {
       return { valid: true, actualType: fileType.mime };
+    }
+
+    // Legacy MS Office files (.doc, .xls, .ppt) are detected as application/x-cfb
+    if (
+      fileType.mime === 'application/x-cfb' &&
+      [
+        'application/msword',
+        'application/vnd.ms-excel',
+        'application/vnd.ms-powerpoint'
+      ].includes(declaredMimeType)
+    ) {
+      return { valid: true, actualType: declaredMimeType };
     }
 
     // MIME mismatch detected — potential spoofing attack

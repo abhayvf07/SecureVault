@@ -1,4 +1,4 @@
-# SecureVault — File Storage & Sharing Platform
+# SecureVault (FileVault)— File Storage & Sharing Platform
 
 A full-stack file storage and sharing app I built using the MERN stack, inspired by Google Drive. Users can upload, manage and share files securely. I focused a lot on getting the auth, file handling and backend structure right — not just making something that runs, but something that's actually built properly.
 
@@ -63,7 +63,6 @@ Building this taught me a lot about JWT refresh token rotation, secure cookie ha
 ### Admin Dashboard
 - Platform-wide stats (users, files, storage)
 - User management — search, suspend/activate, promote/demote
-- File oversight — view and delete any file across all users
 - Self-lockout prevention (can't demote last admin, can't suspend yourself)
 - Full audit trail — every admin action is logged
 - CLI bootstrap script for first admin (zero HTTP attack surface)
@@ -92,7 +91,6 @@ Building this taught me a lot about JWT refresh token rotation, secure cookie ha
 
 ### Storage & Encryption
 - Local disk storage for development and optional Cloudinary storage for hosted deployments
-- Optional AES-256-GCM encryption at rest for locally stored files
 - Safe relative file paths and path traversal protection
 
 ### Performance & Scalability
@@ -119,7 +117,7 @@ Building this taught me a lot about JWT refresh token rotation, secure cookie ha
 
 - **File actions**: Added move and copy operations, plus improved rename and delete workflows.
 - **File discovery**: Added search, MIME-type filters, sorting and paginated results.
-- **Storage controls**: Added configurable per-user storage quotas and optional file encryption at rest.
+- **Storage controls**: Added configurable per-user storage quotas.
 - **Account security**: Added authenticated password changes and stronger validation coverage.
 - **Interface**: Added file preview, context-menu actions, confirmation dialogs and updated dashboard/admin views.
 - **Upload safety**: Added file-type checks, upload limits and safer handling for local storage paths.
@@ -189,8 +187,6 @@ The frontend also has a clean structure — pages, reusable components, hooks/co
 | GET | `/api/admin/users` | List all users (admin) |
 | PATCH | `/api/admin/users/:id/status` | Suspend/activate a user (admin) |
 | PATCH | `/api/admin/users/:id/role` | Promote/demote user role (admin) |
-| GET | `/api/admin/files` | List all files across users (admin) |
-| DELETE | `/api/admin/files/:id` | Admin delete any file (admin) |
 
 I'll add a proper Postman collection soon — it's on my to-do list.
 
